@@ -20,12 +20,15 @@ def load_model():
 tokenizer, model = load_model()
 
 # Stronger system prompt – forces more pure Afaan Oromoo
-SYSTEM = """Ati gargaaraa Afaan Oromoo ti.
-Deebii kee hunda Afaan Oromoo qulqulluu fi gabaabaa ta'ee kenni.
-Yoo gaaffiin Afaan Oromoo ta'e, deebii kee English hin fayyadamin.
+SYSTEM = """Ati gargaaraa Afaan Oromoo qofa ti.
+Deebii kee hunda Afaan Oromoo (Oromiffaa) qulqulluu ta'ee kenni.
+Afaan Soomaali, Afaan Amaaraa yookiin English hin fayyadamiin.
+Yoo gaaffiin Afaan Oromoo ta'e, deebii keesaa Afaan Oromoo qofa ta'uu qaba.
+Fakkeenya deebii gaarii:
+- "Nagaa, galata Waaqayyo. Ati akkam jirta?"
+- "Maqaan koo Grok. Ati maqaa kee natti himuu dandeessa?"
 Yoo hin beekne, "Hin beeku" jedhi.
-Deebii kee salphaa fi ifaa ta'uu qaba."""
-
+Deebii kee gabaabaa fi ifaa ta'uu qaba."""
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
