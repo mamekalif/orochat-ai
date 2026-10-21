@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Styling
+# Custom Styling for Sidebar
 st.markdown("""
 <style>
     .stSidebar {
@@ -25,7 +25,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# API Clients & Database
+# API Clients & Database Connections
 # ---------------------------------------------------------
 @st.cache_resource
 def get_groq_client():
@@ -44,8 +44,11 @@ try:
 except Exception:
     supabase = None
 
+# Active & Stable Groq Model
+ACTIVE_MODEL = "llama-3.1-8b-instant"
+
 # ---------------------------------------------------------
-# Session State Management
+# Session & State Management
 # ---------------------------------------------------------
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = str(uuid.uuid4())
@@ -90,7 +93,7 @@ def log_to_supabase(user_prompt, ai_response, session_id, chat_title):
             data = {
                 "user_prompt": user_prompt,
                 "ai_response": ai_response,
-                "model_used": "llama-3.3-70b-versatile",
+                "model_used": ACTIVE_MODEL,
                 "session_id": session_id,
                 "chat_title": chat_title
             }
@@ -150,7 +153,7 @@ with st.sidebar:
             pass
 
 # ---------------------------------------------------------
-# Main Chat Window
+# Main Chat Window Interface
 # ---------------------------------------------------------
 st.subheader(f"💬 {st.session_state.current_chat_title}")
 
@@ -173,7 +176,7 @@ if st.session_state.last_interaction_id:
             st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
             st.session_state.last_interaction_id = None
 
-# Chat Input
+# Chat Input Pipeline
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
         st.session_state.current_chat_title = prompt[:30]
@@ -191,7 +194,7 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
         with st.spinner("Yaadaa jira..."):
             try:
                 stream = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=ACTIVE_MODEL,
                     messages=payload,
                     temperature=0.6,
                     stream=True
