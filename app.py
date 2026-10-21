@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 import streamlit as st
 from groq import Groq
 from supabase import create_client, Client
@@ -45,7 +46,7 @@ except Exception:
     supabase = None
 
 # ---------------------------------------------------------
-# Dynamic Model Fetcher (Permanent Solution for 404 Errors)
+# Dynamic Model Fetcher
 # ---------------------------------------------------------
 @st.cache_data(ttl=1800)
 def get_active_groq_model():
@@ -53,7 +54,6 @@ def get_active_groq_model():
         models = client.models.list()
         model_ids = [m.id for m in models.data]
         
-        # Priority list of reliable text models on Groq
         preferred_models = [
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
@@ -65,7 +65,6 @@ def get_active_groq_model():
             if p_model in model_ids:
                 return p_model
                 
-        # Fallback to any available non-audio/non-whisper model
         for m_id in model_ids:
             if not any(x in m_id.lower() for x in ["whisper", "guard", "vision", "embed"]):
                 return m_id
@@ -203,6 +202,9 @@ if st.session_state.last_interaction_id:
             st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
             st.session_state.last_interaction_id = None
 
+# Get current real time to inject into AI prompt
+current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
         st.session_state.current_chat_title = prompt[:30]
@@ -212,7 +214,10 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
         st.markdown(prompt)
 
     payload = [
-        {"role": "system", "content": "Ati Orochat-ai dha. Mohammed Kalif Umar tu si uume. Deebii kee Afaan Oromoo qulqulluudhaan deebisi."},
+        {
+            "role": "system", 
+            "content": f"Ati Orochat-ai dha. Mohammed Kalif Umar tu si uume. Deebii kee Afaan Oromoo qulqulluudhaan deebisi. Yeroon ammaataafi guyyaan har'aa: {current_time_str} (EAT)."
+        },
         {"role": "user", "content": prompt}
     ]
 
