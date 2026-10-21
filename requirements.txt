@@ -1,3 +1,4 @@
 streamlit
 groq
 supabase
+rank_bm25
