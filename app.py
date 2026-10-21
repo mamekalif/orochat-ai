@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Styling for Sidebar
+# Custom Styling for Modern Dark UI & Centered Layout
 st.markdown("""
 <style>
     .stSidebar {
@@ -21,6 +21,10 @@ st.markdown("""
     }
     div[data-testid="stSidebarNav"] {
         display: none;
+    }
+    /* Style chat input container */
+    .stChatInputContainer {
+        padding-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -46,7 +50,7 @@ except Exception:
     supabase = None
 
 # ---------------------------------------------------------
-# Dynamic Model Fetcher
+# Dynamic Model Fetcher (Permanent 404 Prevention)
 # ---------------------------------------------------------
 @st.cache_data(ttl=1800)
 def get_active_groq_model():
@@ -180,30 +184,50 @@ with st.sidebar:
             pass
 
 # ---------------------------------------------------------
-# Main Chat Window Interface
+# UI Layout: Modern Landing Page vs Active Chat Canvas
 # ---------------------------------------------------------
-st.subheader(f"💬 {st.session_state.current_chat_title}")
+if not st.session_state.messages:
+    # Sleek, Centered Landing Page
+    st.markdown("""
+        <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; margin-top: 18vh;'>
+            <div style='font-size: 3.5rem; margin-bottom: 10px;'>✨</div>
+            <h1 style='color: #ffffff; font-size: 2.8rem; font-weight: 600; margin-bottom: 5px;'>Orochat-ai</h1>
+            <p style='color: #9aa0a6; font-size: 1.2rem; margin-bottom: 30px;'>Ready when you are / Yeroo hundumaa qophii dha</p>
+        </div>
+    """, unsafe_allow_html=True)
+else:
+    # Active Conversation Header
+    st.subheader(f"💬 {st.session_state.current_chat_title}")
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    # Feedback Controls for the last response
+    if st.session_state.last_interaction_id:
+        st.caption("Deebii kana irratti yaada kee kenni:")
+        col1, col2, _ = st.columns([1, 1, 4])
+        with col1:
+            if st.button("👍 Deebii Gaarii", key="fb_pos"):
+                update_feedback(st.session_state.last_interaction_id, "positive")
+                st.toast("Galatoomaa! Yaadni keessan galmeeffameera.")
+                st.session_state.last_interaction_id = None
+        with col2:
+            if st.button("👎 Deebii Dogoggoraa", key="fb_neg"):
+                update_feedback(st.session_state.last_interaction_id, "negative")
+                st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
+                st.session_state.last_interaction_id = None
 
-if st.session_state.last_interaction_id:
-    st.caption("Deebii kana irratti yaada kee kenni:")
-    col1, col2, _ = st.columns([1, 1, 4])
-    with col1:
-        if st.button("👍 Deebii Gaarii", key="fb_pos"):
-            update_feedback(st.session_state.last_interaction_id, "positive")
-            st.toast("Galatoomaa! Yaadni keessan galmeeffameera.")
-            st.session_state.last_interaction_id = None
-    with col2:
-        if st.button("👎 Deebii Dogoggoraa", key="fb_neg"):
-            update_feedback(st.session_state.last_interaction_id, "negative")
-            st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
-            st.session_state.last_interaction_id = None
-
-# Get current real time to inject into AI prompt
+# ---------------------------------------------------------
+# Advanced System Prompt & Chat Processing Pipeline
+# ---------------------------------------------------------
 current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+SYSTEM_PROMPT = f"""Ati Orochat-ai dha. Gargaaraa teeknoolojii AI fi Afaan Oromoo ti, kan Mohammed Kalif Umar uume.
+Seera Deebii fi Qulqullina Loli (Vocabulary & Grammar Rules):
+1. Yeroo hunda Afaan Oromoo qulqulluu, uumamaa (natural), fi sirrii ta'een deebisi.
+2. Hiika jechoota aadaa, hiika jechoota diizinarii, akkasumas kontekstii naannoo (fkn: Harargee) sirriitti hubachuun ibsi.
+3. Yeroo fi guyyaan har'aa: {current_time_str} (EAT). Gaaffii sa'aatii ykn yeroo dhiyaatu kana irratti hundaa'i.
+"""
 
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
@@ -213,13 +237,11 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    payload = [
-        {
-            "role": "system", 
-            "content": f"Ati Orochat-ai dha. Mohammed Kalif Umar tu si uume. Deebii kee Afaan Oromoo qulqulluudhaan deebisi. Yeroon ammaataafi guyyaan har'aa: {current_time_str} (EAT)."
-        },
-        {"role": "user", "content": prompt}
-    ]
+    payload = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
+    # Append recent chat turns for short-term conversational memory
+    for m in st.session_state.messages[-6:]:
+        payload.append({"role": m["role"], "content": m["content"]})
 
     with st.chat_message("assistant"):
         with st.spinner("Yaadaa jira..."):
@@ -228,6 +250,7 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
                     model=ACTIVE_MODEL,
                     messages=payload,
                     temperature=0.6,
+                    max_tokens=600,
                     stream=True
                 )
 
