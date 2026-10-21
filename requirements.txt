@@ -1,5 +1,2 @@
 streamlit
-transformers
-accelerate
-torch
-google-genai
+groq
