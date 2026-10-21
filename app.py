@@ -44,8 +44,37 @@ try:
 except Exception:
     supabase = None
 
-# Active & Stable Groq Model
-ACTIVE_MODEL = "llama-3.1-8b-instant"
+# ---------------------------------------------------------
+# Dynamic Model Fetcher (Permanent Solution for 404 Errors)
+# ---------------------------------------------------------
+@st.cache_data(ttl=1800)
+def get_active_groq_model():
+    try:
+        models = client.models.list()
+        model_ids = [m.id for m in models.data]
+        
+        # Priority list of reliable text models on Groq
+        preferred_models = [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama3-70b-8192",
+            "llama3-8b-8192"
+        ]
+        
+        for p_model in preferred_models:
+            if p_model in model_ids:
+                return p_model
+                
+        # Fallback to any available non-audio/non-whisper model
+        for m_id in model_ids:
+            if not any(x in m_id.lower() for x in ["whisper", "guard", "vision", "embed"]):
+                return m_id
+                
+        return "llama-3.1-8b-instant"
+    except Exception:
+        return "llama-3.1-8b-instant"
+
+ACTIVE_MODEL = get_active_groq_model()
 
 # ---------------------------------------------------------
 # Session & State Management
@@ -117,7 +146,6 @@ def update_feedback(log_id, feedback_value):
 with st.sidebar:
     st.title("🇪🇹 Orochat-ai")
     
-    # ➕ New Chat Button
     if st.button("➕ Haasaa Haarawaa (New Chat)", use_container_width=True, type="primary"):
         start_new_chat()
         st.rerun()
@@ -161,7 +189,6 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# User Feedback Controls
 if st.session_state.last_interaction_id:
     st.caption("Deebii kana irratti yaada kee kenni:")
     col1, col2, _ = st.columns([1, 1, 4])
@@ -176,7 +203,6 @@ if st.session_state.last_interaction_id:
             st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
             st.session_state.last_interaction_id = None
 
-# Chat Input Pipeline
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
         st.session_state.current_chat_title = prompt[:30]
