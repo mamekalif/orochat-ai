@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Styling for Sidebar UI
+# Custom Styling
 st.markdown("""
 <style>
     .stSidebar {
@@ -25,7 +25,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# API Clients & Database Connections
+# API Clients & Database
 # ---------------------------------------------------------
 @st.cache_resource
 def get_groq_client():
@@ -45,29 +45,52 @@ except Exception:
     supabase = None
 
 # ---------------------------------------------------------
-# Dynamic Model Loader
+# Authentication UI & Session Handling
 # ---------------------------------------------------------
-@st.cache_data(ttl=3600)
-def get_active_groq_model():
-    try:
-        available_models = client.models.list()
-        model_ids = [m.id for m in available_models.data]
-        priority_models = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "openai/gpt-oss-120b"
-        ]
-        for model in priority_models:
-            if model in model_ids:
-                return model
-        for m_id in model_ids:
-            if not any(x in m_id.lower() for x in ["whisper", "guard", "vision", "audio"]):
-                return m_id
-        return "llama-3.1-8b-instant"
-    except Exception:
-        return "llama-3.1-8b-instant"
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-ACTIVE_MODEL = get_active_groq_model()
+def render_auth_page():
+    st.title("🇪🇹 Orochat-ai - Login / Register")
+    st.write("Akkam! Orochat-ai fayyadamuuf mee dura seenaa (Log in).")
+
+    tab1, tab2 = st.tabs(["🔑 Log In", "📝 Register"])
+
+    with tab1:
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_pass")
+        if st.button("Log In", type="primary", use_container_width=True):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                st.session_state.user = res.user
+                st.success("Milkaa'inaan seentaniittu!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error logging in: {e}")
+
+    with tab2:
+        reg_email = st.text_input("Email", key="reg_email")
+        reg_password = st.text_input("Password", type="password", key="reg_pass")
+        if st.button("Register", use_container_width=True):
+            try:
+                res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
+                st.success("Galmeen milkaa'eera! Email keessan mirkaneessaa.")
+            except Exception as e:
+                st.error(f"Error registering: {e}")
+
+    st.markdown("---")
+    st.subheader("Or continue with")
+    if st.button("🌐 Continue with Google (Gmail)", use_container_width=True):
+        try:
+            res = supabase.auth.sign_in_with_oauth({"provider": "google"})
+            st.info(f"Redirecting to Google auth... {res.url}")
+        except Exception as e:
+            st.error(f"Google login error: {e}")
+
+# Block app unless logged in
+if not st.session_state.user:
+    render_auth_page()
+    st.stop()
 
 # ---------------------------------------------------------
 # Session & State Management
@@ -84,14 +107,12 @@ if "messages" not in st.session_state:
 if "last_interaction_id" not in st.session_state:
     st.session_state.last_interaction_id = None
 
-# Helper function to start a new chat session
 def start_new_chat():
     st.session_state.current_session_id = str(uuid.uuid4())
     st.session_state.current_chat_title = "Haasaa Haarawaa"
     st.session_state.messages = []
     st.session_state.last_interaction_id = None
 
-# Helper function to load a past chat session from Supabase
 def load_past_chat(session_id, chat_title):
     st.session_state.current_session_id = session_id
     st.session_state.current_chat_title = chat_title
@@ -100,7 +121,7 @@ def load_past_chat(session_id, chat_title):
     if supabase:
         try:
             res = supabase.table("chat_logs") \
-                .select("user_prompt, ai_response, id") \
+                .select("user_prompt, ai_response") \
                 .eq("session_id", session_id) \
                 .order("created_at", desc=False) \
                 .execute()
@@ -108,19 +129,19 @@ def load_past_chat(session_id, chat_title):
             for row in res.data:
                 st.session_state.messages.append({"role": "user", "content": row["user_prompt"]})
                 st.session_state.messages.append({"role": "assistant", "content": row["ai_response"]})
-        except Exception as e:
-            st.error(f"Error loading chat history: {e}")
+        except Exception:
+            pass
 
-# Database Logging Helper
 def log_to_supabase(user_prompt, ai_response, session_id, chat_title):
-    if supabase:
+    if supabase and st.session_state.user:
         try:
             data = {
                 "user_prompt": user_prompt,
                 "ai_response": ai_response,
-                "model_used": ACTIVE_MODEL,
+                "model_used": "llama-3.3-70b-versatile",
                 "session_id": session_id,
-                "chat_title": chat_title
+                "chat_title": chat_title,
+                "user_id": st.session_state.user.id
             }
             res = supabase.table("chat_logs").insert(data).execute()
             if res.data:
@@ -129,48 +150,23 @@ def log_to_supabase(user_prompt, ai_response, session_id, chat_title):
             pass
     return None
 
-def update_feedback(log_id, feedback_value):
-    if supabase and log_id:
-        try:
-            supabase.table("chat_logs").update({"feedback": feedback_value}).eq("id", log_id).execute()
-        except Exception:
-            pass
-
 # ---------------------------------------------------------
-# RAG Knowledge Engine & System Instructions
-# ---------------------------------------------------------
-KNOWLEDGE_BASE = {
-    "mammaaksa": "Mammaaksa: 'Haadha manaa fi abbaa manaa walmormu, alagaatu gidduutti fayyadama.'",
-    "baabbile": "Magaalaan Baabbilee Godina Bahaa Harargee keessatti argamti. Naannoo bosona leencotaa fi Arbaatiin beekamti.",
-    "orochat": "Orochat-ai gargaaraa teeknoolojii AI fi Afaan Oromoo kan Mohammed Kalif Umar tu ijaareedha.",
-    "mohammed": "Mohammed Kalif Umar kalaqaa fi ijaaraa Orochat-ai fi teeknoolojii Afaan Oromoo ti."
-}
-
-def retrieve_knowledge(query):
-    q = query.lower()
-    retrieved = [fact for key, fact in KNOWLEDGE_BASE.items() if key in q]
-    return "\n".join(retrieved) if retrieved else None
-
-SYSTEM_PROMPT = """Ati Orochat-ai dha. Ati gargaaraa teeknoolojii AI fi Afaan Oromoo ti.
-
-Eenyummaa fi Kalaqaa Keeti:
-- Maqaan kee: Orochat-ai
-- Namni si uume/kalaqe: Mohammed Kalif Umar
-- Kaayyoon kee: Ummata Oromootaaf teeknoolojii AI fi Afaan Oromoo tajaajiluu.
-
-Seera Deebii:
-1. Deebii kee hunda Afaan Oromoo qulqulluu, sirrii, fi uumamaan (conversational) ta'een deebisi.
-2. Gaaffii "Eenyuutu si uume?", "Eenyuutu si kalaqe?" jedhuuf: "Ani Orochat-ai dha. Mohammed Kalif Umar tu na kalaqe." jedhi.
-3. Yoo odeeffannoo dabalataa (Knowledge Context) siif keenname, odeeffannoo sana fayyadamii deebii qulqulluu kenni.
-"""
-
-# ---------------------------------------------------------
-# Sidebar Navigation (New Chat & Recents)
+# Sidebar Navigation (User Profile, New Chat & Recents)
 # ---------------------------------------------------------
 with st.sidebar:
     st.title("🇪🇹 Orochat-ai")
     
-    # 📝 New Chat Button
+    # Display Active User Email
+    user_email = st.session_state.user.email if st.session_state.user else "User"
+    st.caption(f"👤 {user_email}")
+    if st.button("🚪 Logout", use_container_width=True):
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.rerun()
+
+    st.markdown("---")
+    
+    # ➕ New Chat Button
     if st.button("➕ Haasaa Haarawaa (New Chat)", use_container_width=True, type="primary"):
         start_new_chat()
         st.rerun()
@@ -178,15 +174,15 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📜 Seenaa Haasaa (Recents)")
 
-    # Load unique sessions from database
-    if supabase:
+    # Load chats specific to logged in user
+    if supabase and st.session_state.user:
         try:
             response = supabase.table("chat_logs") \
                 .select("session_id, chat_title, created_at") \
+                .eq("user_id", st.session_state.user.id) \
                 .order("created_at", desc=True) \
                 .execute()
             
-            # Deduplicate by session_id while maintaining order
             seen_sessions = set()
             recent_chats = []
             for item in response.data:
@@ -195,54 +191,28 @@ with st.sidebar:
                     seen_sessions.add(s_id)
                     recent_chats.append(item)
 
-            # Display past sessions in sidebar list
-            for chat in recent_chats[:15]:  # Display last 15 chats
+            for chat in recent_chats[:15]:
                 title = chat.get("chat_title") or "Haasaa"
                 sid = chat.get("session_id")
-                
-                # Active highlight indicator
                 is_active = (sid == st.session_state.current_session_id)
-                btn_label = f"💬 {title[:28]}..." if len(title) > 28 else f"💬 {title}"
+                btn_label = f"💬 {title[:25]}..." if len(title) > 25 else f"💬 {title}"
                 
                 if st.button(btn_label, key=f"session_{sid}", use_container_width=True, disabled=is_active):
                     load_past_chat(sid, title)
                     st.rerun()
-
-        except Exception as e:
-            st.caption("Seenaa haasaa fe'uu irratti rakkootu uumame.")
-    else:
-        st.caption("Database hin tengiinsifamne.")
+        except Exception:
+            pass
 
 # ---------------------------------------------------------
-# Main Chat Window
+# Main Chat Application Window
 # ---------------------------------------------------------
 st.subheader(f"💬 {st.session_state.current_chat_title}")
 
-# Render chat message history for current active session
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# User Feedback Controls
-if st.session_state.last_interaction_id:
-    st.caption("Deebii kana irratti yaada kee kenni:")
-    col1, col2, _ = st.columns([1, 1, 4])
-    with col1:
-        if st.button("👍 Deebii Gaarii", key="fb_pos"):
-            update_feedback(st.session_state.last_interaction_id, "positive")
-            st.toast("Galatoomaa! Yaadni keessan galmeeffameera.")
-            st.session_state.last_interaction_id = None
-    with col2:
-        if st.button("👎 Deebii Dogoggoraa", key="fb_neg"):
-            update_feedback(st.session_state.last_interaction_id, "negative")
-            st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
-            st.session_state.last_interaction_id = None
-
-# ---------------------------------------------------------
-# Chat Input & Streaming Pipeline
-# ---------------------------------------------------------
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
-    # Set chat title automatically from first question if it's new
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
         st.session_state.current_chat_title = prompt[:30]
 
@@ -250,25 +220,18 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    payload = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    # Retrieve context from RAG
-    context = retrieve_knowledge(prompt)
-    if context:
-        payload.append({"role": "system", "content": f"Odeeffannoo Dabalataa:\n{context}"})
-
-    # Append short-term session conversation context
-    for m in st.session_state.messages[-6:]:
-        payload.append({"role": m["role"], "content": m["content"]})
+    payload = [
+        {"role": "system", "content": "Ati Orochat-ai dha. Mohammed Kalif Umar tu si uume. Deebii kee Afaan Oromoo qulqulluudhaan deebisi."},
+        {"role": "user", "content": prompt}
+    ]
 
     with st.chat_message("assistant"):
         with st.spinner("Yaadaa jira..."):
             try:
                 stream = client.chat.completions.create(
-                    model=ACTIVE_MODEL,
+                    model="llama-3.3-70b-versatile",
                     messages=payload,
                     temperature=0.6,
-                    max_tokens=400,
                     stream=True
                 )
 
@@ -278,16 +241,13 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
 
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
-                # Save chat to Supabase database
                 log_id = log_to_supabase(
                     user_prompt=prompt,
                     ai_response=reply,
                     session_id=st.session_state.current_session_id,
                     chat_title=st.session_state.current_chat_title
                 )
-                
-                st.session_state.last_interaction_id = log_id
                 st.rerun()
 
             except Exception as e:
-                st.error(f"Dogoggorri uumamee jira: {str(e)}")
+                st.error(f"Error: {e}")
