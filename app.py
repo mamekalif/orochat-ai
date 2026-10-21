@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+import requests
 import streamlit as st
 from groq import Groq
 from supabase import create_client, Client
@@ -78,6 +79,74 @@ def get_active_groq_model():
         return "llama-3.1-8b-instant"
 
 ACTIVE_MODEL = get_active_groq_model()
+
+# ---------------------------------------------------------
+# GitHub Data Fetchers (Direct Raw JSON Loading)
+# ---------------------------------------------------------
+GITHUB_USER = "mamekalif"
+REPO_NAME = "orochat-ai"
+BRANCH = "main"
+
+GRAMMAR_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{REPO_NAME}/{BRANCH}/grammar_2.json"
+QA_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{REPO_NAME}/{BRANCH}/qa_pairs_2.json"
+
+@st.cache_data(ttl=3600)
+def load_github_datasets():
+    """Fetches grammar_2.json and qa_pairs_2.json directly from GitHub."""
+    grammar_rules_text = ""
+    qa_pairs_data = []
+
+    # 1. Fetch Grammar Rules
+    try:
+        g_res = requests.get(GRAMMAR_RAW_URL)
+        if g_res.status_code == 200:
+            g_json = g_res.json()
+            grammar_rules_text = "\nSeerluga fi Qajeelfama Afaan Oromoo (Grammar Rules):\n"
+            for rule in g_json.get("grammar_rules", []):
+                cat = rule.get("category", "")
+                desc = rule.get("description", "")
+                grammar_rules_text += f"- {cat}: {desc}\n"
+    except Exception:
+        pass
+
+    # 2. Fetch QA Proverb Pairs
+    try:
+        qa_res = requests.get(QA_RAW_URL)
+        if qa_res.status_code == 200:
+            qa_json = qa_res.json()
+            qa_pairs_data = qa_json.get("qa_pairs", [])
+    except Exception:
+        pass
+
+    return grammar_rules_text, qa_pairs_data
+
+def search_proverbs_in_github_data(prompt_text, qa_pairs_data):
+    """Searches loaded GitHub proverbs matching user prompt."""
+    if not prompt_text or not qa_pairs_data:
+        return ""
+    
+    prompt_lower = prompt_text.lower()
+    matched = []
+    
+    for item in qa_pairs_data:
+        proverb = item.get("proverb", "").lower()
+        theme = item.get("theme", "").lower()
+        meaning = item.get("meaning", "").lower()
+        
+        if any(kw in proverb or kw in theme or kw in meaning for kw in prompt_lower.split()):
+            matched.append(item)
+            if len(matched) >= 3:
+                break
+
+    if matched:
+        injection = "\n[OroWise Proverb Context Matches]:\n"
+        for p in matched:
+            injection += f"- Mammaaksa: '{p.get('proverb')}' | Hiika: {p.get('meaning')} | Fayyadama: {p.get('usage_context')}\n"
+        return injection
+    return ""
+
+# Load datasets from GitHub into cache on startup
+dynamic_grammar_rules, qa_pairs_list = load_github_datasets()
 
 # ---------------------------------------------------------
 # Session & State Management
@@ -227,6 +296,7 @@ Seera Deebii fi Qulqullina Loli (Vocabulary & Grammar Rules):
 1. Yeroo hunda Afaan Oromoo qulqulluu, uumamaa (natural), fi sirrii ta'een deebisi.
 2. Hiika jechoota aadaa, hiika jechoota diizinarii, akkasumas kontekstii naannoo (fkn: Harargee) sirriitti hubachuun ibsi.
 3. Yeroo fi guyyaan har'aa: {current_time_str} (EAT). Gaaffii sa'aatii ykn yeroo dhiyaatu kana irratti hundaa'i.
+{dynamic_grammar_rules}
 """
 
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
@@ -237,7 +307,10 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    payload = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Search loaded GitHub proverb dataset for relevance
+    proverb_context = search_proverbs_in_github_data(prompt, qa_pairs_list)
+
+    payload = [{"role": "system", "content": SYSTEM_PROMPT + proverb_context}]
     
     # Append recent chat turns for short-term conversational memory
     for m in st.session_state.messages[-6:]:
@@ -271,3 +344,4 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
 
             except Exception as e:
                 st.error(f"Error: {e}")
+        
