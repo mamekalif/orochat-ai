@@ -4,7 +4,7 @@ from google.genai import types
 
 st.set_page_config(page_title="Afaan Oromoo AI", page_icon="🇪🇹", layout="centered")
 st.title("🇪🇹 Afaan Oromoo AI")
-st.caption("Powered by Gemini 2.5 Flash")
+st.caption("Powered by Gemini 1.5 Flash")
 
 # Initialize Gemini Client using Streamlit Secrets
 @st.cache_resource
@@ -51,9 +51,9 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     with st.chat_message("assistant"):
         with st.spinner("Yaadaa jira..."):
             try:
-                # Stream the output directly
+                # Stream the output directly using standard gemini-1.5-flash
                 response = client.models.generate_content_stream(
-                    model="gemini-2.5-flash",
+                    model="gemini-1.5-flash",
                     contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_PROMPT,
