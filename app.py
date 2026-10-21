@@ -19,14 +19,13 @@ def get_groq_client():
 client = get_groq_client()
 
 # Dynamic Model Selector: Prevents breaks from model deprecations
-@st.cache_data(ttl=3600)  # Caches active model list for 1 hour
+@st.cache_data(ttl=3600)
 def get_active_groq_model():
-    """Dynamically fetches active text models from Groq API to avoid 400/404 errors."""
+    """Dynamically fetches active text models from Groq API."""
     try:
         available_models = client.models.list()
         model_ids = [m.id for m in available_models.data]
         
-        # Priority list of production text models
         priority_models = [
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
@@ -34,12 +33,10 @@ def get_active_groq_model():
             "openai/gpt-oss-20b"
         ]
         
-        # Return the first matching active priority model
         for model in priority_models:
             if model in model_ids:
                 return model
                 
-        # Fallback: Pick any non-whisper/non-guard active text model
         for m_id in model_ids:
             if not any(x in m_id.lower() for x in ["whisper", "guard", "vision", "audio"]):
                 return m_id
@@ -50,24 +47,16 @@ def get_active_groq_model():
 
 ACTIVE_MODEL = get_active_groq_model()
 
-# High-precision Afaan Oromoo system instructions with exact identity definition
-SYSTEM_PROMPT = """Ati gargaaraa Afaan Oromoo intelliijenti ta'ee dha. 
-Maqaan kee 'Orochat-ai' jedhama. 
-Ati gargaaraa teeknoolojii AI fi afaanii ti.
+# High-precision Afaan Oromoo system prompt with flexible identity & natural conversational flow
+SYSTEM_PROMPT = """Ati Orochat-ai ti. Ati gargaaraa teeknoolojii AI fi Afaan Oromoo ti.
 
-Seera Deebii:
-1. Deebii kee hunda Afaan Oromoo qulqulluu, bareedaa fi sirrii ta'een deebisi.
-2. Gaaffii maqaa ykn eenyummaa kee ilaalchisee: "Maqaan koo Orochat-ai ti, gargaaraa Afaan Oromoo fi teeknoolojii ti" jedhi.
-3. Tasumaa "ChatGPT", "OpenAI" yookiin maqaa qaama biroo jedhii hin waamin.
-4. Deebii kee gabaabaa, ifaa fi kabaja qabu ta'uu qaba.
+Seera Deebii fi Eenyummaa:
+1. Deebii kee hunda Afaan Oromoo qulqulluu, sirrii, fi uumamaan (conversational) ta'een deebisi.
+2. Yoo gaaffiin "Eenyuutu si uume?" ykn "Eenyuutu si tolche?" ta'e, deebii dhugaa fi sababa qabu kenni: "Ani Orochat-ai dha. Inni na ijaare / na hojjete gargaaraa AI Afaan Oromoo uumuuf qophaa'eera." (Tasumaa "ChatGPT" ykn "OpenAI" hin jedhin).
+3. Gaaffii tokko irra deddeebite deebii walfakkaataa (repetitive phrase) qofa hin deebisin. Gaaffii fayyadamaa sirriitti hubachuun deebii gababaa fi qulqulluu kenni.
+4. Kabaja fi obsaan deebisi. Yoo fayyadamaan arrabso ykn komii dhiyeesse, sammuu babal'aan dhiifama gaafachuun deebii sirrii fi qulqulluu kenni.
 
-Fakkeenya:
-Gaaffii: Maqaan kee eenyu?
-Deebii: Maqaan koo Orochat-ai ti. Akkamittin si gargaaruu danda'a?
-
-Gaaffii: Akkam jirtu?
-Deebii: Fayyaa dha, galatoomaa! Isin akkam jirtu?
-"""
+Afaan Oromoo qulqulluu qofa fayyadami!"""
 
 # Initialize chat memory
 if "messages" not in st.session_state:
