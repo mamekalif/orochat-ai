@@ -1,67 +1,75 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+from groq import Groq
 
-st.set_page_config(page_title="Afaan Oromoo AI", page_icon="🇪🇹", layout="centered")
+# Page configuration
+st.set_page_config(
+    page_title="Afaan Oromoo AI", 
+    page_icon="🇪🇹", 
+    layout="centered"
+)
+
 st.title("🇪🇹 Afaan Oromoo AI")
-st.caption("Powered by Gemini 1.5 Flash")
+st.caption("Fayyadamaaf qophaa'e – Powered by Groq & Llama 3.3")
 
-# Initialize Gemini Client using Streamlit Secrets
+# Initialize Groq client securely from Streamlit secrets
 @st.cache_resource
-def get_gemini_client():
-    return genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+def get_groq_client():
+    return Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-client = get_gemini_client()
+client = get_groq_client()
 
+# High-precision system instructions with Afaan Oromoo few-shot guidance
 SYSTEM_PROMPT = """Ati gargaaraa Afaan Oromoo ti.
-Deebii kee hunda Afaan Oromoo qulqulluu fi gabaabaa ta'ee deebisi.
+Deebii kee hunda Afaan Oromoo qulqulluu, sirrii fi gabaabaa ta'ee deebisi.
 English yookiin Afaan biraa fayyadamuu hin danda'atamu.
 
 Fakkeenya:
 Gaaffii: Akkam jirtu?
 Deebii: Fayyaa dha, galatoomaa! Isin akkam jirtu?
+
+Gaaffii: Magaalaan guddoon Itoophiyaa eessa?
+Deebii: Magaalaan guddoon Itoophiyaa Finfinnee dha.
 """
 
+# Store chat history in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display previous messages
+# Display prior conversation turns
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # User Chat Input
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
-    # Add user message to session
+    # Append user prompt to UI history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Format history for API request
-    contents = []
-    for m in st.session_state.messages:
-        role = "user" if m["role"] == "user" else "model"
-        contents.append(
-            types.Content(
-                role=role,
-                parts=[types.Part.from_text(text=m["content"])]
-            )
-        )
+    # Build context payload with system prompt + last 6 turns
+    payload = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in st.session_state.messages[-6:]:
+        payload.append({"role": m["role"], "content": m["content"]})
 
+    # Generate streaming assistant reply
     with st.chat_message("assistant"):
         with st.spinner("Yaadaa jira..."):
             try:
-                # Stream the output directly using standard gemini-1.5-flash
-                response = client.models.generate_content_stream(
-                    model="gemini-1.5-flash",
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.6,
-                    )
+                stream = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=payload,
+                    temperature=0.5,
+                    max_tokens=300,
+                    stream=True
                 )
 
-                reply = st.write_stream(chunk.text for chunk in response)
+                # Direct stream response output to Streamlit UI
+                reply = st.write_stream(
+                    chunk.choices[0].delta.content or "" for chunk in stream
+                )
+
+                # Store assistant response to memory
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
             except Exception as e:
