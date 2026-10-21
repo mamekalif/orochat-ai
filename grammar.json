@@ -1,0 +1,122 @@
+[
+  {
+    "rule_category": "Case Markers",
+    "rule_name": "Instrumental case (-ni / -tiin)",
+    "explanation": "Indicates the tool or means by which an action is performed.",
+    "correct_examples": [
+      "Harkaan kennaniiti miilaan barbaadani.",
+      "Uleen bofa dha'e."
+    ],
+    "incorrect_examples": [
+      "Harka kennaniiti miila barbaadani."
+    ]
+  },
+  {
+    "rule_category": "Negation",
+    "rule_name": "Negation with 'hin'",
+    "explanation": "The particle 'hin' precedes the verb to express negation.",
+    "correct_examples": [
+      "Namni aaru, hin gabbatu.",
+      "Ibiddi garaa, foon hin waadu."
+    ],
+    "incorrect_examples": [
+      "Namni aaru, gabbatu hin."
+    ]
+  },
+  {
+    "rule_category": "Conditional",
+    "rule_name": "Conditional with 'yoo'",
+    "explanation": "'Yoo' introduces a condition followed by the conditioned clause.",
+    "correct_examples": [
+      "Yoo roobni roobe, bakakkaan bu'a.",
+      "Yoo jaalatan, jaldeeysaaf illee ni booyani."
+    ],
+    "incorrect_examples": [
+      "Yoo roobni rooba, bakakkaan bu'a."
+    ]
+  },
+  {
+    "rule_category": "Purpose",
+    "rule_name": "Purpose suffix (-uuf)",
+    "explanation": "The suffix -uuf on a verb expresses 'in order to'.",
+    "correct_examples": [
+      "Bishaan dhuguuf deeme.",
+      "Hojii hojjechuuf ka'e."
+    ],
+    "incorrect_examples": [
+      "Bishaan dhuguu deeme."
+    ]
+  },
+  {
+    "rule_category": "Relative Clause",
+    "rule_name": "Relative clause with 'namni / kan'",
+    "explanation": "Relative clauses use namni or kan with a verb meaning 'the person/one who...'.",
+    "correct_examples": [
+      "Namni aaru, hin gabbatu.",
+      "Kan beeku hin dubbatu."
+    ],
+    "incorrect_examples": [
+      "Nama aaru, hin gabbatu."
+    ]
+  },
+  {
+    "rule_category": "Quotation",
+    "rule_name": "Quotative 'je'e' / 'jette'",
+    "explanation": "Direct speech is closed with je'e (male) or jette (female).",
+    "correct_examples": [
+      "'Akkam bulte?' je'e.",
+      "'Bakka koo hin wallaalu' jette harreen."
+    ],
+    "incorrect_examples": [
+      "Namichi 'Akkam bulte?' jette."
+    ]
+  },
+  {
+    "rule_category": "Possession",
+    "rule_name": "Possession with '-aa / -ii' and 'kan'",
+    "explanation": "Possession uses noun + -aa/-ii or 'kan' to mean 'of / belonging to'.",
+    "correct_examples": [
+      "Manni abbaa gube, iyyaa hin qabu.",
+      "Harka namaa hin fuune."
+    ],
+    "incorrect_examples": [
+      "Manni abba gube."
+    ]
+  },
+  {
+    "rule_category": "Locative",
+    "rule_name": "Locative case (-tti)",
+    "explanation": "The suffix -tti indicates location: in / at / on.",
+    "correct_examples": [
+      "Magaalaatti deeme.",
+      "Mana keessatti taa'a."
+    ],
+    "incorrect_examples": [
+      "Magaalaa deeme."
+    ]
+  },
+  {
+    "rule_category": "Ablative",
+    "rule_name": "Ablative case (-rraa)",
+    "explanation": "The suffix -rraa indicates motion from or origin: from.",
+    "correct_examples": [
+      "Magaalaarraa dhufe.",
+      "Namarraa fagaadhu."
+    ],
+    "incorrect_examples": [
+      "Magaalaa dhufe."
+    ]
+  },
+  {
+    "rule_category": "Imperative",
+    "rule_name": "Plural imperative (-aa)",
+    "explanation": "The plural imperative is formed with -aa when addressing multiple people.",
+    "correct_examples": [
+      "Dalagaa, soorataa.",
+      "Hojii keessan hojjedhaa."
+    ],
+    "incorrect_examples": [
+      "Dalagan, sooratan."
+    ]
+  }
+]
