@@ -45,55 +45,7 @@ except Exception:
     supabase = None
 
 # ---------------------------------------------------------
-# Authentication UI & Session Handling
-# ---------------------------------------------------------
-if "user" not in st.session_state:
-    st.session_state.user = None
-
-def render_auth_page():
-    st.title("🇪🇹 Orochat-ai - Login / Register")
-    st.write("Akkam! Orochat-ai fayyadamuuf mee dura seenaa (Log in).")
-
-    tab1, tab2 = st.tabs(["🔑 Log In", "📝 Register"])
-
-    with tab1:
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Log In", type="primary", use_container_width=True):
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.user = res.user
-                st.success("Milkaa'inaan seentaniittu!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error logging in: {e}")
-
-    with tab2:
-        reg_email = st.text_input("Email", key="reg_email")
-        reg_password = st.text_input("Password", type="password", key="reg_pass")
-        if st.button("Register", use_container_width=True):
-            try:
-                res = supabase.auth.sign_up({"email": reg_email, "password": reg_password})
-                st.success("Galmeen milkaa'eera! Email keessan mirkaneessaa.")
-            except Exception as e:
-                st.error(f"Error registering: {e}")
-
-    st.markdown("---")
-    st.subheader("Or continue with")
-    if st.button("🌐 Continue with Google (Gmail)", use_container_width=True):
-        try:
-            res = supabase.auth.sign_in_with_oauth({"provider": "google"})
-            st.info(f"Redirecting to Google auth... {res.url}")
-        except Exception as e:
-            st.error(f"Google login error: {e}")
-
-# Block app unless logged in
-if not st.session_state.user:
-    render_auth_page()
-    st.stop()
-
-# ---------------------------------------------------------
-# Session & State Management
+# Session State Management
 # ---------------------------------------------------------
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = str(uuid.uuid4())
@@ -133,15 +85,14 @@ def load_past_chat(session_id, chat_title):
             pass
 
 def log_to_supabase(user_prompt, ai_response, session_id, chat_title):
-    if supabase and st.session_state.user:
+    if supabase:
         try:
             data = {
                 "user_prompt": user_prompt,
                 "ai_response": ai_response,
                 "model_used": "llama-3.3-70b-versatile",
                 "session_id": session_id,
-                "chat_title": chat_title,
-                "user_id": st.session_state.user.id
+                "chat_title": chat_title
             }
             res = supabase.table("chat_logs").insert(data).execute()
             if res.data:
@@ -150,21 +101,18 @@ def log_to_supabase(user_prompt, ai_response, session_id, chat_title):
             pass
     return None
 
+def update_feedback(log_id, feedback_value):
+    if supabase and log_id:
+        try:
+            supabase.table("chat_logs").update({"feedback": feedback_value}).eq("id", log_id).execute()
+        except Exception:
+            pass
+
 # ---------------------------------------------------------
-# Sidebar Navigation (User Profile, New Chat & Recents)
+# Sidebar Navigation (New Chat & Recents)
 # ---------------------------------------------------------
 with st.sidebar:
     st.title("🇪🇹 Orochat-ai")
-    
-    # Display Active User Email
-    user_email = st.session_state.user.email if st.session_state.user else "User"
-    st.caption(f"👤 {user_email}")
-    if st.button("🚪 Logout", use_container_width=True):
-        supabase.auth.sign_out()
-        st.session_state.user = None
-        st.rerun()
-
-    st.markdown("---")
     
     # ➕ New Chat Button
     if st.button("➕ Haasaa Haarawaa (New Chat)", use_container_width=True, type="primary"):
@@ -174,12 +122,10 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📜 Seenaa Haasaa (Recents)")
 
-    # Load chats specific to logged in user
-    if supabase and st.session_state.user:
+    if supabase:
         try:
             response = supabase.table("chat_logs") \
                 .select("session_id, chat_title, created_at") \
-                .eq("user_id", st.session_state.user.id) \
                 .order("created_at", desc=True) \
                 .execute()
             
@@ -204,7 +150,7 @@ with st.sidebar:
             pass
 
 # ---------------------------------------------------------
-# Main Chat Application Window
+# Main Chat Window
 # ---------------------------------------------------------
 st.subheader(f"💬 {st.session_state.current_chat_title}")
 
@@ -212,6 +158,22 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# User Feedback Controls
+if st.session_state.last_interaction_id:
+    st.caption("Deebii kana irratti yaada kee kenni:")
+    col1, col2, _ = st.columns([1, 1, 4])
+    with col1:
+        if st.button("👍 Deebii Gaarii", key="fb_pos"):
+            update_feedback(st.session_state.last_interaction_id, "positive")
+            st.toast("Galatoomaa! Yaadni keessan galmeeffameera.")
+            st.session_state.last_interaction_id = None
+    with col2:
+        if st.button("👎 Deebii Dogoggoraa", key="fb_neg"):
+            update_feedback(st.session_state.last_interaction_id, "negative")
+            st.toast("Galatoomaa! Sirreessuuf data keessatti galmeessineerra.")
+            st.session_state.last_interaction_id = None
+
+# Chat Input
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
     if not st.session_state.messages or st.session_state.current_chat_title == "Haasaa Haarawaa":
         st.session_state.current_chat_title = prompt[:30]
@@ -247,6 +209,7 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
                     session_id=st.session_state.current_session_id,
                     chat_title=st.session_state.current_chat_title
                 )
+                st.session_state.last_interaction_id = log_id
                 st.rerun()
 
             except Exception as e:
