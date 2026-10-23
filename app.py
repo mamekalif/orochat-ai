@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# Clients
+# Clients WITH diagnostics
 # ---------------------------------------------------------
 @st.cache_resource
 def _groq():
@@ -29,20 +29,37 @@ def _groq():
 
 @st.cache_resource
 def _sb():
+    """Return (client, error_message). Never raise."""
+    # 1. Check the secrets exist at all
     try:
-        return create_client(
-            st.secrets["SUPABASE_URL"],
-            st.secrets["SUPABASE_KEY"],
-        )
-    except Exception:
-        return None
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except Exception as e:
+        return None, f"Secret missing: {e}"
+
+    # 2. Validate the values
+    if not url or not isinstance(url, str):
+        return None, "SUPABASE_URL is empty or not a string"
+    if not key or not isinstance(key, str):
+        return None, "SUPABASE_KEY is empty or not a string"
+    if not url.startswith("https://"):
+        return None, f"SUPABASE_URL doesn't start with https:// — got: {url[:40]}"
+    if not key.startswith("eyJ"):
+        return None, f"SUPABASE_KEY doesn't look like a JWT (should start with 'eyJ') — got: {key[:20]}"
+
+    # 3. Try to create the client
+    try:
+        client = create_client(url, key)
+        return client, None
+    except Exception as e:
+        return None, f"create_client failed: {e}"
 
 
 client = _groq()
-supabase = _sb()
+supabase, SB_ERROR = _sb()
 
 # ---------------------------------------------------------
-# Active Groq model (2026: GPT-OSS replaces retired Llama)
+# Active Groq model
 # ---------------------------------------------------------
 @st.cache_data(ttl=3600)
 def pick_model():
@@ -51,10 +68,7 @@ def pick_model():
     except Exception:
         return "openai/gpt-oss-20b"
 
-    for pref in [
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
-    ]:
+    for pref in ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]:
         if pref in ids:
             return pref
 
@@ -65,7 +79,7 @@ def pick_model():
 ACTIVE_MODEL = pick_model()
 
 # ---------------------------------------------------------
-# Load corpus (from repo root)
+# Load corpus
 # ---------------------------------------------------------
 @st.cache_resource
 def load_corpus():
@@ -115,7 +129,7 @@ def load_corpus():
 CORPUS = load_corpus()
 
 # ---------------------------------------------------------
-# Pure-Python BM25 (no external deps)
+# Pure-Python BM25
 # ---------------------------------------------------------
 def tok(t: str):
     return re.findall(r"\w+", t.lower())
@@ -160,7 +174,7 @@ CORPUS_TXT = [
 BM = BM25(CORPUS_TXT) if CORPUS else None
 
 # ---------------------------------------------------------
-# Supabase learning layer (visible errors)
+# Supabase learning layer
 # ---------------------------------------------------------
 def _fetch(table, lim=2000):
     if not supabase:
@@ -205,7 +219,7 @@ def retrieve(q, k=4):
 
 def learn_note(q, a, cat="manual", pri=2):
     if not supabase:
-        return False, "Supabase not connected — check secrets"
+        return False, f"Not connected: {SB_ERROR or 'unknown'}"
     try:
         supabase.table("knowledge_base").insert(
             {"question": q, "answer": a, "category": cat, "priority": pri}
@@ -217,7 +231,7 @@ def learn_note(q, a, cat="manual", pri=2):
 
 def learn_mem(f):
     if not supabase:
-        return False, "Supabase not connected — check secrets"
+        return False, f"Not connected: {SB_ERROR or 'unknown'}"
     try:
         supabase.table("user_memory").insert({"fact": f}).execute()
         return True, None
@@ -239,7 +253,7 @@ for k, v in {
     st.session_state.setdefault(k, v)
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar with DEBUG PANEL
 # ---------------------------------------------------------
 with st.sidebar:
     st.title("🇪🇹 Orochat-ai")
@@ -252,6 +266,45 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
+
+    # ----- DEBUG PANEL -----
+    with st.expander("🔍 Debug (Secrets & Connection)", expanded=True):
+        # Check GROQ
+        try:
+            _ = st.secrets["GROQ_API_KEY"]
+            st.success("GROQ_API_KEY: ✅ loaded")
+        except Exception as e:
+            st.error(f"GROQ_API_KEY: ❌ {e}")
+
+        # Check SUPABASE_URL
+        try:
+            u = str(st.secrets["SUPABASE_URL"])
+            st.success(f"SUPABASE_URL: ✅ {u[:35]}...")
+        except Exception as e:
+            st.error(f"SUPABASE_URL: ❌ {e}")
+
+        # Check SUPABASE_KEY
+        try:
+            k = str(st.secrets["SUPABASE_KEY"])
+            st.success(f"SUPABASE_KEY: ✅ {k[:20]}... (len={len(k)})")
+        except Exception as e:
+            st.error(f"SUPABASE_KEY: ❌ {e}")
+
+        # Show connection status
+        if supabase:
+            st.success("🔌 Supabase client: ✅ CONNECTED")
+        else:
+            st.error(f"🔌 Supabase client: ❌ {SB_ERROR}")
+
+        # Show what keys ARE in secrets (safe list, not values)
+        try:
+            all_keys = list(st.secrets.keys())
+            st.caption(f"Secrets loaded: {all_keys}")
+        except Exception:
+            st.caption("Cannot list secrets keys")
+
+    st.markdown("---")
+
     st.subheader("📈 Barnoota (Learning)")
     st.metric("Proverbs", len(CORPUS))
     st.caption(f"Notes: {len(_fetch('knowledge_base', 5000))}")
