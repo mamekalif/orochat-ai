@@ -160,7 +160,7 @@ CORPUS_TXT = [
 BM = BM25(CORPUS_TXT) if CORPUS else None
 
 # ---------------------------------------------------------
-# Supabase learning layer (with visible errors)
+# Supabase learning layer (visible errors)
 # ---------------------------------------------------------
 def _fetch(table, lim=2000):
     if not supabase:
@@ -175,12 +175,10 @@ def retrieve(q, k=4):
     lines = []
     q_tokens = set(tok(q))
 
-    # 1) Memory facts (highest priority)
     for r in _fetch("user_memory", 500):
         if q_tokens & set(tok(r.get("fact", ""))):
             lines.append(f'- MEMORY: {r["fact"]}')
 
-    # 2) Learned notes & corrections
     for r in _fetch("knowledge_base", 500):
         txt = r.get("question", "") + " " + r.get("answer", "")
         if q_tokens & set(tok(txt)):
@@ -189,7 +187,6 @@ def retrieve(q, k=4):
                 f'- {label}: {r.get("question", "")} → {r.get("answer", "")}'
             )
 
-    # 3) Proverbs via BM25
     if BM:
         sc = BM.scores(q)
         for i in sorted(range(len(sc)), key=lambda i: sc[i], reverse=True)[:k]:
@@ -302,7 +299,6 @@ else:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    # Feedback buttons
     if st.session_state.last_q and not st.session_state.pending_neg:
         c1, c2, _ = st.columns([1, 1, 4])
         with c1:
@@ -326,7 +322,6 @@ else:
                 }
                 st.rerun()
 
-    # Correction box (after 👎)
     if st.session_state.pending_neg:
         p = st.session_state.pending_neg
         st.warning(f"Correct: **{p['q']}**")
@@ -384,7 +379,7 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
                 stream=True,
                 extra_body={
                     "include_reasoning": False,
-                    "reasoning_effort": "minimal",
+                    "reasoning_effort": "low",
                 },
             )
             reply = st.write_stream(
