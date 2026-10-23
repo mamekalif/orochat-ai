@@ -1,4 +1,7 @@
-import uuid, json, math, re
+import uuid
+import json
+import math
+import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +13,11 @@ from supabase import create_client
 # ---------------------------------------------------------
 # Page Setup
 # ---------------------------------------------------------
-st.set_page_config(page_title="Orochat-ai 🇪🇹", page_icon="🇪🇹", layout="wide")
+st.set_page_config(
+    page_title="Orochat-ai 🇪🇹",
+    page_icon="🇪🇹",
+    layout="wide",
+)
 
 # ---------------------------------------------------------
 # Clients
@@ -19,12 +26,17 @@ st.set_page_config(page_title="Orochat-ai 🇪🇹", page_icon="🇪🇹", layou
 def _groq():
     return Groq(api_key=st.secrets["GROQ_API_KEY"])
 
+
 @st.cache_resource
 def _sb():
     try:
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+        return create_client(
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_KEY"],
+        )
     except Exception:
         return None
+
 
 client = _groq()
 supabase = _sb()
@@ -39,7 +51,6 @@ def pick_model():
     except Exception:
         return "openai/gpt-oss-20b"
 
-    # Groq's recommended replacements for retired Llama models (2026-08-16)
     for pref in [
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
@@ -47,14 +58,14 @@ def pick_model():
         if pref in ids:
             return pref
 
-    # Last resort: any gpt-oss model available
     gpt_oss = [m for m in ids if "gpt-oss" in m.lower()]
     return gpt_oss[0] if gpt_oss else "openai/gpt-oss-20b"
+
 
 ACTIVE_MODEL = pick_model()
 
 # ---------------------------------------------------------
-# Load corpus (repo root)
+# Load corpus (from repo root)
 # ---------------------------------------------------------
 @st.cache_resource
 def load_corpus():
@@ -65,16 +76,17 @@ def load_corpus():
         try:
             raw = json.load(open(p, encoding="utf-8"))
 
-            # Original Mammaaksa.json structure
             if name == "Mammaaksa.json":
-                return [{
-                    "id": x["ID"],
-                    "proverb": x.get("Mammaaksa_AO", ""),
-                    "meaning_om": x.get("Meaning_AO", ""),
-                    "meaning_en": x.get("Meaning_EN", ""),
-                } for x in raw]
+                return [
+                    {
+                        "id": x["ID"],
+                        "proverb": x.get("Mammaaksa_AO", ""),
+                        "meaning_om": x.get("Meaning_AO", ""),
+                        "meaning_en": x.get("Meaning_EN", ""),
+                    }
+                    for x in raw
+                ]
 
-            # qa_pairs.json fallback (extract meaning rows only)
             if name == "qa_pairs.json":
                 out, seen = [], set()
                 for q in raw:
@@ -84,19 +96,21 @@ def load_corpus():
                     if not k or k in seen:
                         continue
                     seen.add(k)
-                    out.append({
-                        "id": q.get("source_id", ""),
-                        "proverb": k,
-                        "meaning_om": q.get("answer_om", ""),
-                        "meaning_en": q.get("answer_en", ""),
-                    })
+                    out.append(
+                        {
+                            "id": q.get("source_id", ""),
+                            "proverb": k,
+                            "meaning_om": q.get("answer_om", ""),
+                            "meaning_en": q.get("answer_en", ""),
+                        }
+                    )
                 return out
 
-            # proverb_corpus.json (already compact)
             return raw
         except Exception:
             continue
     return []
+
 
 CORPUS = load_corpus()
 
@@ -105,6 +119,7 @@ CORPUS = load_corpus()
 # ---------------------------------------------------------
 def tok(t: str):
     return re.findall(r"\w+", t.lower())
+
 
 class BM25:
     def __init__(self, docs, k1=1.5, b=0.75):
@@ -131,9 +146,12 @@ class BM25:
                 f = c.get(term, 0)
                 if f == 0:
                     continue
-                denom = f + self.k1 * (1 - self.b + self.b * len(self.docs[i]) / self.avg)
+                denom = f + self.k1 * (
+                    1 - self.b + self.b * len(self.docs[i]) / self.avg
+                )
                 out[i] += self.idf[term] * (f * (self.k1 + 1)) / denom
         return out
+
 
 CORPUS_TXT = [
     f'{p["proverb"]} {p.get("meaning_om", "")} {p.get("meaning_en", "")}'
@@ -142,7 +160,7 @@ CORPUS_TXT = [
 BM = BM25(CORPUS_TXT) if CORPUS else None
 
 # ---------------------------------------------------------
-# Supabase learning layer
+# Supabase learning layer (with visible errors)
 # ---------------------------------------------------------
 def _fetch(table, lim=2000):
     if not supabase:
@@ -152,11 +170,12 @@ def _fetch(table, lim=2000):
     except Exception:
         return []
 
+
 def retrieve(q, k=4):
     lines = []
-
-    # 1) User memory (facts)
     q_tokens = set(tok(q))
+
+    # 1) Memory facts (highest priority)
     for r in _fetch("user_memory", 500):
         if q_tokens & set(tok(r.get("fact", ""))):
             lines.append(f'- MEMORY: {r["fact"]}')
@@ -166,9 +185,11 @@ def retrieve(q, k=4):
         txt = r.get("question", "") + " " + r.get("answer", "")
         if q_tokens & set(tok(txt)):
             label = "CORRECTION" if r.get("category") == "correction" else "NOTE"
-            lines.append(f'- {label}: {r.get("question","")} → {r.get("answer","")}')
+            lines.append(
+                f'- {label}: {r.get("question", "")} → {r.get("answer", "")}'
+            )
 
-    # 3) Proverbs (BM25)
+    # 3) Proverbs via BM25
     if BM:
         sc = BM.scores(q)
         for i in sorted(range(len(sc)), key=lambda i: sc[i], reverse=True)[:k]:
@@ -176,30 +197,36 @@ def retrieve(q, k=4):
                 continue
             p = CORPUS[i]
             lines.append(
-                f'- "{p["proverb"]}" — {p.get("meaning_en","")} '
-                f'(Oromoo: {p.get("meaning_om","")})'
+                f'- "{p["proverb"]}" — {p.get("meaning_en", "")} '
+                f'(Oromoo: {p.get("meaning_om", "")})'
             )
 
-    return "### CONTEXT\n" + "\n".join(lines[:8]) + "\n### END" if lines else ""
+    if not lines:
+        return ""
+    return "### CONTEXT\n" + "\n".join(lines[:8]) + "\n### END"
+
 
 def learn_note(q, a, cat="manual", pri=2):
-    if supabase:
-        try:
-            supabase.table("knowledge_base").insert({
-                "question": q,
-                "answer": a,
-                "category": cat,
-                "priority": pri,
-            }).execute()
-        except Exception:
-            pass
+    if not supabase:
+        return False, "Supabase not connected — check secrets"
+    try:
+        supabase.table("knowledge_base").insert(
+            {"question": q, "answer": a, "category": cat, "priority": pri}
+        ).execute()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 
 def learn_mem(f):
-    if supabase:
-        try:
-            supabase.table("user_memory").insert({"fact": f}).execute()
-        except Exception:
-            pass
+    if not supabase:
+        return False, "Supabase not connected — check secrets"
+    try:
+        supabase.table("user_memory").insert({"fact": f}).execute()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 
 # ---------------------------------------------------------
 # Session state
@@ -239,27 +266,36 @@ with st.sidebar:
             q = st.text_input("Question", key="tq")
             a = st.text_area("Answer", height=60, key="ta")
             if st.button("💾 Save Note") and q and a:
-                learn_note(q, a)
-                st.success("Saved!")
-                st.rerun()
+                ok, err = learn_note(q, a)
+                if ok:
+                    st.success("✅ Saved to knowledge base!")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Save failed: {err}")
         else:
             f = st.text_input("Fact", key="tm")
             if st.button("🧠 Save Memory") and f:
-                learn_mem(f)
-                st.success("Saved!")
-                st.rerun()
+                ok, err = learn_mem(f)
+                if ok:
+                    st.success("✅ Saved to memory!")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Save failed: {err}")
 
 # ---------------------------------------------------------
 # Landing vs Chat
 # ---------------------------------------------------------
 if not st.session_state.msgs:
-    st.markdown("""
-    <div style='text-align:center;margin-top:18vh;'>
-      <div style='font-size:3.5rem;'>✨</div>
-      <h1>Orochat-ai</h1>
-      <p style='color:#9aa0a6;'>Ready when you are / Yeroo hundumaa qophiidha</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style='text-align:center;margin-top:18vh;'>
+          <div style='font-size:3.5rem;'>✨</div>
+          <h1>Orochat-ai</h1>
+          <p style='color:#9aa0a6;'>Ready when you are / Yeroo hundumaa qophiidha</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 else:
     st.subheader(f"💬 {st.session_state.title}")
     for m in st.session_state.msgs:
@@ -271,8 +307,16 @@ else:
         c1, c2, _ = st.columns([1, 1, 4])
         with c1:
             if st.button("👍 Gaarii"):
-                learn_note(st.session_state.last_q, st.session_state.last_a, "verified", 3)
-                st.toast("✅ AI baratte!")
+                ok, err = learn_note(
+                    st.session_state.last_q,
+                    st.session_state.last_a,
+                    "verified",
+                    3,
+                )
+                if ok:
+                    st.toast("✅ AI baratte!")
+                else:
+                    st.toast(f"⚠️ {err}")
                 st.rerun()
         with c2:
             if st.button("👎 Dogoggora"):
@@ -290,10 +334,13 @@ else:
         c1, c2 = st.columns([1, 1])
         with c1:
             if st.button("💾 Save correction") and fixed:
-                learn_note(p["q"], fixed, "correction", 1)
-                st.success("Corrected!")
-                st.session_state.pending_neg = None
-                st.rerun()
+                ok, err = learn_note(p["q"], fixed, "correction", 1)
+                if ok:
+                    st.success("✅ Corrected!")
+                    st.session_state.pending_neg = None
+                    st.rerun()
+                else:
+                    st.error(f"❌ Save failed: {err}")
         with c2:
             if st.button("❌ Cancel"):
                 st.session_state.pending_neg = None
@@ -306,7 +353,11 @@ now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 BASE_SYSTEM = (
     f"Ati Orochat-ai dha. Gargaaraa Afaan Oromoo fi mammaaksa.\n"
     f"Yeroo har'aa: {now} (EAT).\n"
-    f"Yoo CONTEXT jiru, ISA IRRATTI HUNDAA'I. Deebii kee Afaan Oromoo qulqulluun kenni."
+    f"SEERA CIMMAA:\n"
+    f"1. Deebii kee AL TOKKO qofa kenni. Irra hin deebi'in, hin irra deddeebi'in.\n"
+    f"2. Yoo CONTEXT jiru, ISA IRRATTI HUNDAA'I — CONTEXT dursa qaba.\n"
+    f"3. Yoo CONTEXT keessa deebiin hin jiraatin, 'Ani kana hin beeku' jedhi.\n"
+    f"4. Afaan Oromoo qulqulluun, gabaabinaan deebisi (max 3 paragraphs).\n"
 )
 
 if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
@@ -326,13 +377,14 @@ if prompt := st.chat_input("Gaaffii kee Afaan Oromootiin barreessi..."):
             stream = client.chat.completions.create(
                 model=ACTIVE_MODEL,
                 messages=payload,
-                temperature=0.5,
-                max_tokens=700,
+                temperature=0.3,
+                max_tokens=600,
+                frequency_penalty=0.7,
+                presence_penalty=0.5,
                 stream=True,
-                # GPT-OSS reasoning control (via extra_body)
                 extra_body={
                     "include_reasoning": False,
-                    "reasoning_effort": "low",
+                    "reasoning_effort": "minimal",
                 },
             )
             reply = st.write_stream(
