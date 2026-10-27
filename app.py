@@ -289,33 +289,48 @@ def insert_knowledge(
     category: str = "pending_correction",
     priority: int = 1,
 ) -> tuple[bool, str | None]:
-    """Insert public teaching submissions as pending, never trusted, knowledge."""
+    """Submit a correction through the restricted Supabase RPC function.
+
+    Requires public.submit_pending_correction(text, text) to be created in
+    Supabase SQL Editor. The database function is responsible for inserting
+    only pending_correction rows with priority 1.
+    """
     if supabase is None:
-        return False, "Supabase is not connected. Check SUPABASE_URL and SUPABASE_KEY."
+        return False, "Supabase is not configured. Check the app Secrets."
 
     question = str(question or "").strip()
     answer = str(answer or "").strip()
+
     if not question or not answer:
         return False, "Both question and answer are required."
-
-    # Do not allow any caller, including a public form, to submit trusted categories.
-    if category != "pending_correction":
-        return False, "Invalid submission category. New submissions must be pending review."
+    if category != "pending_correction" or priority != 1:
+        return False, "Invalid submission settings. Submissions must remain pending."
+    if len(question) > 2000 or len(answer) > 8000:
+        return False, "The question or answer exceeds the allowed length."
 
     try:
-        result = supabase.table("knowledge_base").insert(
+        supabase.rpc(
+            "submit_pending_correction",
             {
-                "question": question[:2_000],
-                "answer": answer[:8_000],
-                "category": "pending_correction",
-                "priority": 1,
-            }
+                "p_question": question,
+                "p_answer": answer,
+            },
         ).execute()
-        if not getattr(result, "data", None):
-            return False, "Supabase returned no inserted row. Check table permissions and API response."
         return True, None
     except Exception as exc:
-        return False, f"Supabase insert error: {_safe_supabase_error(exc)}"
+        # Keep secrets and HTTP request headers out of user-visible messages.
+        message = _safe_supabase_error(exc)
+        if "42501" in message:
+            return False, (
+                "Database permission error (42501). Check the RPC function owner, "
+                "its INSERT privileges, and whether the table has FORCE ROW LEVEL SECURITY."
+            )
+        if "PGRST202" in message or "submit_pending_correction" in message:
+            return False, (
+                "Supabase could not find submit_pending_correction. Run the SQL "
+                "function setup in Supabase SQL Editor, then retry."
+            )
+        return False, f"Supabase submission failed: {message}"
 
 
 def insert_memory(fact: str) -> tuple[bool, str | None]:
