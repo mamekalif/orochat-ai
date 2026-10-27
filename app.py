@@ -82,11 +82,15 @@ def get_supabase_client(url: str, key: str):
 GROQ_API_KEY = secret_value("GROQ_API_KEY")
 SUPABASE_URL = secret_value("SUPABASE_URL")
 SUPABASE_KEY = secret_value("SUPABASE_KEY")
+# Privileged key is used only by server-side admin review functions.
+# Accept the name already added in Streamlit Secrets, plus an explicit admin alias.
+SUPABASE_SERVICE_KEY = secret_value("SUPABASE_SERVICE_KEY") or secret_value("ADMIN_SUPABASE_KEY")
 ADMIN_PASSWORD = secret_value("ADMIN_PASSWORD")
 CONFIGURED_MODEL = secret_value("GROQ_MODEL", DEFAULT_MODEL)
 
 groq_client = None
 supabase = None
+admin_supabase = None
 connection_errors: list[str] = []
 
 if not GROQ_API_KEY:
@@ -105,6 +109,16 @@ else:
     except Exception as exc:
         connection_errors.append(
             f"Supabase client could not be created ({type(exc).__name__})."
+        )
+
+# Separate privileged client: never use this for public submissions or chat retrieval.
+# RLS is bypassed by service/secret keys, so access is limited to authenticated admin actions below.
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    try:
+        admin_supabase = get_supabase_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    except Exception as exc:
+        connection_errors.append(
+            f"Admin Supabase client could not be created ({type(exc).__name__})."
         )
 
 
@@ -266,11 +280,12 @@ def fetch_rows(table: str, limit: int = 500) -> list[dict[str, Any]]:
 
 def fetch_pending_corrections(limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:
     """Fetch pending corrections directly, rather than scanning the first N rows."""
-    if supabase is None:
-        return [], "Supabase is not configured. Check the app Secrets."
+    if admin_supabase is None:
+        return [], ("Private admin database access is not configured. Check the "
+                    "SUPABASE_SERVICE_KEY secret in Streamlit Secrets.")
     try:
         response = (
-            supabase.table("knowledge_base")
+            admin_supabase.table("knowledge_base")
             .select("*")
             .eq("category", "pending_correction")
             .order("id", desc=True)
@@ -366,12 +381,14 @@ def insert_memory(fact: str) -> tuple[bool, str | None]:
 
 def update_knowledge_category(row_id: Any, category: str) -> tuple[bool, str | None]:
     """Approve/reject a pending row when the existing table has an id column."""
-    if supabase is None:
-        return False, "Supabase is not connected."
+    if admin_supabase is None:
+        return False, "Private admin database access is not configured. Check Streamlit Secrets."
     if row_id is None:
         return False, "This row has no id field; cannot safely update it."
+    if category not in {"approved", "rejected"}:
+        return False, "Invalid review status."
     try:
-        supabase.table("knowledge_base").update(
+        admin_supabase.table("knowledge_base").update(
             {"category": category}
         ).eq("id", row_id).execute()
         return True, None
