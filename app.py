@@ -264,6 +264,24 @@ def fetch_rows(table: str, limit: int = 500) -> list[dict[str, Any]]:
         return []
 
 
+def fetch_pending_corrections(limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch pending corrections directly, rather than scanning the first N rows."""
+    if supabase is None:
+        return [], "Supabase is not configured. Check the app Secrets."
+    try:
+        response = (
+            supabase.table("knowledge_base")
+            .select("*")
+            .eq("category", "pending_correction")
+            .order("id", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data or [], None
+    except Exception as exc:
+        return [], f"Could not load pending corrections: {_safe_supabase_error(exc)}"
+
+
 def _safe_supabase_error(exc: Exception) -> str:
     """Return useful PostgREST diagnostics without exposing request headers or keys."""
     parts: list[str] = []
@@ -624,11 +642,11 @@ with st.sidebar:
                 st.session_state.admin_authenticated = False
                 st.rerun()
 
-            pending_rows = [
-                row for row in fetch_rows("knowledge_base", KNOWLEDGE_FETCH_LIMIT)
-                if str(row.get("category", "") or "").casefold().startswith("pending")
-            ]
-            st.caption(f"Pending submissions: {len(pending_rows)}")
+            pending_rows, pending_error = fetch_pending_corrections()
+            if pending_error:
+                st.error(pending_error)
+            else:
+                st.caption(f"Pending submissions loaded: {len(pending_rows)}")
 
             for index, row in enumerate(pending_rows[:30]):
                 row_id = row.get("id")
