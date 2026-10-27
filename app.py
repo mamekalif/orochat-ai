@@ -264,31 +264,58 @@ def fetch_rows(table: str, limit: int = 500) -> list[dict[str, Any]]:
         return []
 
 
+def _safe_supabase_error(exc: Exception) -> str:
+    """Return useful PostgREST diagnostics without exposing request headers or keys."""
+    parts: list[str] = []
+    for attr in ("code", "message", "details", "hint"):
+        value = getattr(exc, attr, None)
+        if value is not None:
+            cleaned = re.sub(r"[\r\n\t]+", " ", str(value)).strip()
+            if cleaned and len(cleaned) <= 500 and cleaned not in parts:
+                parts.append(cleaned)
+    if not parts:
+        # Some library exceptions only expose a short message through str().
+        cleaned = re.sub(r"[\r\n\t]+", " ", str(exc)).strip()
+        if cleaned and len(cleaned) <= 500:
+            parts.append(cleaned)
+    if not parts:
+        parts.append(type(exc).__name__)
+    return " | ".join(parts)[:1200]
+
+
 def insert_knowledge(
     question: str,
     answer: str,
     category: str = "pending_correction",
     priority: int = 1,
 ) -> tuple[bool, str | None]:
-    """Insert into the existing schema. New public submissions are not trusted."""
+    """Insert public teaching submissions as pending, never trusted, knowledge."""
     if supabase is None:
-        return False, "Supabase is not connected."
-    question = question.strip()
-    answer = answer.strip()
+        return False, "Supabase is not connected. Check SUPABASE_URL and SUPABASE_KEY."
+
+    question = str(question or "").strip()
+    answer = str(answer or "").strip()
     if not question or not answer:
         return False, "Both question and answer are required."
+
+    # Do not allow any caller, including a public form, to submit trusted categories.
+    if category != "pending_correction":
+        return False, "Invalid submission category. New submissions must be pending review."
+
     try:
-        supabase.table("knowledge_base").insert(
+        result = supabase.table("knowledge_base").insert(
             {
                 "question": question[:2_000],
                 "answer": answer[:8_000],
-                "category": category,
-                "priority": int(priority),
+                "category": "pending_correction",
+                "priority": 1,
             }
         ).execute()
+        if not getattr(result, "data", None):
+            return False, "Supabase returned no inserted row. Check table permissions and API response."
         return True, None
     except Exception as exc:
-        return False, f"Database insert failed ({type(exc).__name__}). Check the table columns and policies."
+        return False, f"Supabase insert error: {_safe_supabase_error(exc)}"
 
 
 def insert_memory(fact: str) -> tuple[bool, str | None]:
@@ -301,7 +328,7 @@ def insert_memory(fact: str) -> tuple[bool, str | None]:
         supabase.table("user_memory").insert({"fact": fact[:4_000]}).execute()
         return True, None
     except Exception as exc:
-        return False, f"Memory insert failed ({type(exc).__name__}). Check the table columns and policies."
+        return False, f"Supabase memory insert error: {_safe_supabase_error(exc)}"
 
 
 def update_knowledge_category(row_id: Any, category: str) -> tuple[bool, str | None]:
@@ -316,7 +343,7 @@ def update_knowledge_category(row_id: Any, category: str) -> tuple[bool, str | N
         ).eq("id", row_id).execute()
         return True, None
     except Exception as exc:
-        return False, f"Update failed ({type(exc).__name__}). Confirm an id column and update permissions."
+        return False, f"Supabase update error: {_safe_supabase_error(exc)}"
 
 
 # ---------------------------------------------------------------------------
