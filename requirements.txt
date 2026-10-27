@@ -1,4 +1,4 @@
 streamlit
 groq
-supabase
+supabase>=2.22.3,<3
 rank_bm25
