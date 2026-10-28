@@ -279,7 +279,9 @@ def fetch_rows(table: str, limit: int = 500) -> list[dict[str, Any]]:
 
 
 def fetch_pending_corrections(limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:
-    """Fetch pending corrections directly, rather than scanning the first N rows."""
+    """Fetch pending corrections only for an authenticated admin session."""
+    if not st.session_state.get("admin_authenticated", False):
+        return [], "Admin authentication required."
     if admin_supabase is None:
         return [], ("Private admin database access is not configured. Check the "
                     "SUPABASE_SERVICE_KEY secret in Streamlit Secrets.")
@@ -380,7 +382,9 @@ def insert_memory(fact: str) -> tuple[bool, str | None]:
 
 
 def update_knowledge_category(row_id: Any, category: str) -> tuple[bool, str | None]:
-    """Approve/reject a pending row when the existing table has an id column."""
+    """Approve/reject a pending row only for an authenticated admin session."""
+    if not st.session_state.get("admin_authenticated", False):
+        return False, "Admin authentication required."
     if admin_supabase is None:
         return False, "Private admin database access is not configured. Check Streamlit Secrets."
     if row_id is None:
